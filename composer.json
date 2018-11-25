@@ -1,0 +1,28 @@
+{
+    "name": "imranweb7/test-authorize-dot-net-magento2-payment-module",
+    "type": "magento2-module",
+    "description": "Test Authorize.Net Magento2 Payment Module",
+    "license": "GNU General Public License v3.0",
+    "authors": [
+        {
+            "name": "Muhammed Imran Hussain",
+            "homepage": "https://www.linkedin.com/in/imranweb7/"
+        }
+    ],
+    "require": {
+        "php": ">=7.1.0",
+        "magento/module-sales": "100.0.*",
+        "magento/module-checkout": "100.0.*",
+        "magento/module-payment": "100.0.*",
+        "magento/framework": "100.0.*",
+        "magento/magento-composer-installer": "100.0.*"
+    },
+    "autoload": {
+        "files": [
+            "registration.php"
+        ],
+        "psr-4": {
+            "Imranweb7\\AuthorizeDotNet\\": ""
+        }
+    }
+}
