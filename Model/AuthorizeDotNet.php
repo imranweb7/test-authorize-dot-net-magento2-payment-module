@@ -1,6 +1,18 @@
 <?php
 namespace Imranweb7\AuthorizeDotNet\Model;
 
+use net\authorize\api\constants\ANetEnvironment;
+use net\authorize\api\contract\v1\CreateTransactionRequest;
+use net\authorize\api\contract\v1\CreditCardType;
+use net\authorize\api\contract\v1\CustomerAddressType;
+use net\authorize\api\contract\v1\CustomerDataType;
+use net\authorize\api\contract\v1\MerchantAuthenticationType;
+use net\authorize\api\contract\v1\OrderType;
+use net\authorize\api\contract\v1\PaymentType;
+use net\authorize\api\contract\v1\SettingType;
+use net\authorize\api\contract\v1\TransactionRequestType;
+use net\authorize\api\controller\CreateTransactionController;
+
 class AuthorizeDotNet extends \Magento\Payment\Model\Method\Cc
 {
     const CODE = 'imranweb7_authorizedotnet';
@@ -20,23 +32,11 @@ class AuthorizeDotNet extends \Magento\Payment\Model\Method\Cc
     public function capture(\Magento\Payment\Model\InfoInterface $payment, $amount)
     {
         try {
-            //check if payment has been authorized
             if(is_null($payment->getParentTransactionId())) {
                 $this->authorize($payment, $amount);
             }
 
-            //build array of payment data for API request.
-            $request = [
-                'capture_amount' => $amount,
-                //any other fields, api key, etc.
-            ];
-
-            //make API request to credit card processor.
-            $response = $this->makeCaptureRequest($request);
-
-            //todo handle response
-
-            //transaction is done.
+            $response = $this->makeCaptureRequest($payment, $amount);
             $payment->setIsTransactionClosed(1);
 
         } catch (\Exception $e) {
@@ -56,58 +56,44 @@ class AuthorizeDotNet extends \Magento\Payment\Model\Method\Cc
     public function authorize(\Magento\Payment\Model\InfoInterface $payment, $amount)
     {
         try {
-
-            ///build array of payment data for API request.
-            $request = [
-                'cc_type' => $payment->getCcType(),
-                'cc_exp_month' => $payment->getCcExpMonth(),
-                'cc_exp_year' => $payment->getCcExpYear(),
-                'cc_number' => $payment->getCcNumberEnc(),
-                'amount' => $amount
-            ];
-
-            //check if payment has been authorized
-            $response = $this->makeAuthRequest($request);
+            $response = $this->makeAuthRequest($payment, $amount);
 
         } catch (\Exception $e) {
             $this->debug($payment->getData(), $e->getMessage());
         }
 
         if(isset($response['transactionID'])) {
-            // Successful auth request.
-            // Set the transaction id on the payment so the capture request knows auth has happened.
             $payment->setTransactionId($response['transactionID']);
             $payment->setParentTransactionId($response['transactionID']);
         }
 
-        //processing is not done yet.
         $payment->setIsTransactionClosed(0);
 
         return $this;
     }
 
-    /**
-     * Set the payment action to authorize_and_capture
-     *
-     * @return string
-     */
-    public function getConfigPaymentAction()
-    {
-        return self::ACTION_AUTHORIZE_CAPTURE;
-    }
 
     /**
-     * Test method to handle an API call for authorization request.
-     *
-     * @param $request
-     * @return array
      * @throws \Magento\Framework\Exception\LocalizedException
      */
-    public function makeAuthRequest($request)
+    public function makeAuthRequest(\Magento\Payment\Model\InfoInterface $payment, $amount)
     {
-        $response = ['transactionId' => 123]; //todo implement API call for auth request.
+        $responseCode = [];
+        $responseSuccess = false;
+        $response = $this->processRequest($payment, $amount, "authorize");
 
-        if(!$response) {
+        if ($response != null) {
+            if ($response->getMessages()->getResultCode() == "Ok") {
+                $tresponse = $response->getTransactionResponse();
+
+                if ($tresponse != null && $tresponse->getMessages() != null) {
+                    $responseSuccess = true;
+                    $responseCode['transactionId'] = $tresponse->getTransId();
+                }
+            }
+        }
+
+        if(!$responseSuccess) {
             throw new \Magento\Framework\Exception\LocalizedException(__('Failed auth request.'));
         }
 
@@ -115,20 +101,134 @@ class AuthorizeDotNet extends \Magento\Payment\Model\Method\Cc
     }
 
     /**
-     * Test method to handle an API call for capture request.
-     *
-     * @param $request
-     * @return array
      * @throws \Magento\Framework\Exception\LocalizedException
      */
-    public function makeCaptureRequest($request)
+    public function makeCaptureRequest(\Magento\Payment\Model\InfoInterface $payment, $amount)
     {
-        $response = ['success']; //todo implement API call for capture request.
+        $responseCode = [];
+        $responseSuccess = false;
+        $response = $this->processRequest($payment, $amount, "capture");
 
-        if(!$response) {
+        if ($response != null) {
+            if($response->getMessages()->getResultCode() == "Ok") {
+                $tresponse = $response->getTransactionResponse();
+
+                if ($tresponse != null && $tresponse->getMessages() != null) {
+                    $responseSuccess = true;
+                    $responseCode[] = 'success';
+                }
+
+            }
+        }
+
+        if(!$responseSuccess) {
             throw new \Magento\Framework\Exception\LocalizedException(__('Failed capture request.'));
         }
 
+        return $responseCode;
+    }
+
+    private function processRequest(\Magento\Payment\Model\InfoInterface $payment, $amount, $action)
+    {
+        $authorizeOnly = false;
+
+        /** @var \Magento\Sales\Model\Order $order */
+        $order = $payment->getOrder();
+
+        $merchantAuthentication = new MerchantAuthenticationType();
+        $merchantAuthentication->setName($this->getConfigData('api_login_id'));
+        $merchantAuthentication->setTransactionKey($this->getConfigData('api_trans_key'));
+
+        $request = new CreateTransactionRequest();
+        $request->setMerchantAuthentication($merchantAuthentication);
+
+        $transactionRequestType = new TransactionRequestType();
+
+        switch ($action) {
+            case "authorize":
+                $authorizeOnly = true;
+
+                $orderType = new OrderType();
+                $orderType->setInvoiceNumber($order->getIncrementId());
+                $orderType->setDescription("");
+
+                $duplicateWindowSetting = new SettingType();
+                $duplicateWindowSetting->setSettingName("duplicateWindow");
+                $duplicateWindowSetting->setSettingValue("60");
+
+                $creditCard = new CreditCardType();
+                $creditCard->setCardNumber($payment->getCcNumberEnc());
+                $creditCard->setExpirationDate($payment->getCcExpYear() . "-" . $payment->getCcExpMonth());
+                $creditCard->setCardCode($payment->getCcType());
+
+                $paymentOne = new PaymentType();
+                $paymentOne->setCreditCard($creditCard);
+
+                $customerData = new CustomerDataType();
+                $customerData->setType("individual");
+                $customerData->setId($order->getCustomerId());
+                $customerData->setEmail($order->getCustomerEmail());
+
+                $transactionRequestType->setAmount($amount);
+                $transactionRequestType->setOrder($orderType);
+                $transactionRequestType->addToTransactionSettings($duplicateWindowSetting);
+                $transactionRequestType->setTransactionType("authOnlyTransaction");
+                $transactionRequestType->setPayment($paymentOne);
+                $transactionRequestType->setCustomer($customerData);
+
+                $refId = 'ref' . time();
+                $request->setRefId($refId);
+                break;
+
+            case "capture":
+                $transactionRequestType->setTransactionType("priorAuthCaptureTransaction");
+                $transactionRequestType->setRefTransId($this->getRealParentTransactionId($payment));
+                break;
+        }
+
+
+        if (!empty($order) && $authorizeOnly) {
+            $billing = $order->getBillingAddress();
+            if (!empty($billing)) {
+                $billingAddress = new CustomerAddressType();
+                $billingAddress->setFirstName($billing->getFirstname());
+                $billingAddress->setLastName($billing->getLastname());
+                $billingAddress->setCompany($billing->getCompany());
+                $billingAddress->setAddress($billing->getStreetLine(1));
+                $billingAddress->setCity($billing->getCity());
+                $billingAddress->setState($billing->getRegion());
+                $billingAddress->setZip($billing->getPostcode());
+                $billingAddress->setCountry("USA");
+
+                $transactionRequestType->setBillTo($billingAddress);
+            }
+
+            $shipping = $order->getShippingAddress();
+            if (!empty($shipping)) {
+                $shippingAddress = new CustomerAddressType();
+                $shippingAddress->setFirstName($shipping->getFirstname());
+                $shippingAddress->setLastName($shipping->getLastname());
+                $shippingAddress->setCompany($shipping->getCompany());
+                $shippingAddress->setAddress($shipping->getStreetLine(1));
+                $shippingAddress->setCity($shipping->getCity());
+                $shippingAddress->setState($shipping->getRegion());
+                $shippingAddress->setZip($shipping->getPostcode());
+                $shippingAddress->setCountry("USA");
+
+                $transactionRequestType->setShipTo($shippingAddress);
+            }
+        }
+
+        $request->setTransactionRequest($transactionRequestType);
+
+        $controller = new CreateTransactionController($request);
+
+        $apiUrl = ANetEnvironment::SANDBOX;
+        if($this->getConfigData('test') == 0){
+            $apiUrl = ANetEnvironment::PRODUCTION;
+        }
+
+        $response = $controller->executeWithApiResponse($apiUrl);
         return $response;
     }
 }

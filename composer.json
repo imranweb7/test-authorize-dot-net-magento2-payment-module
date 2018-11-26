@@ -10,7 +10,9 @@
         }
     ],
     "require": {
-        "php": ">=7.1.0"
+        "php": ">=7.1.0","ext-curl": "*",
+        "phpunit/phpunit": "~4.8||~6.0",
+        "authorizenet/authorizenet": ">=1.9.8 || <2.0"
     },
     "autoload": {
         "files": [

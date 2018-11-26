@@ -7,23 +7,14 @@
                 <active>0</active>
                 <cctypes>VI,MC</cctypes>
                 <api_login_id backend_model="Magento\Config\Model\Config\Backend\Encrypted" />
-                <merchant_email />
                 <model>Imranweb7\AuthorizeDotNet\Model\AuthorizeDotNet</model>
                 <order_status>processing</order_status>
                 <payment_action>authorize</payment_action>
                 <test>1</test>
                 <title>Test Authorize.Net Credit Card Payment</title>
                 <api_trans_key backend_model="Magento\Config\Model\Config\Backend\Encrypted" />
-                <api_trans_md5 backend_model="Magento\Config\Model\Config\Backend\Encrypted" />
-                <currency>USD</currency>
                 <create_order_before>1</create_order_before>
-                <date_delim>/</date_delim>
                 <ccfields>x_card_code,x_exp_date,x_card_num</ccfields>
-                <place_order_url>authorizenet/directpost_payment/place</place_order_url>
-                <cgi_url_test_mode>https://test.authorize.net/gateway/transact.dll</cgi_url_test_mode>
-                <cgi_url>https://secure.authorize.net/gateway/transact.dll</cgi_url>
-                <cgi_url_td_test_mode>https://apitest.authorize.net/xml/v1/request.api</cgi_url_td_test_mode>
-                <cgi_url_td>https://api2.authorize.net/xml/v1/request.api</cgi_url_td>
             </imranweb7_authorizedotnet>
         </payment>
     </default>
