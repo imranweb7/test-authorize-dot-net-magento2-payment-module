@@ -182,7 +182,7 @@ class AuthorizeDotNet extends \Magento\Payment\Model\Method\Cc
 
             case "capture":
                 $transactionRequestType->setTransactionType("priorAuthCaptureTransaction");
-                $transactionRequestType->setRefTransId($this->getRealParentTransactionId($payment));
+                $transactionRequestType->setRefTransId($payment->getParentTransactionId());
                 break;
         }
 
